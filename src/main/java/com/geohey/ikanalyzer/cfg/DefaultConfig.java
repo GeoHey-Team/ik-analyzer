@@ -24,55 +24,37 @@ package com.geohey.ikanalyzer.cfg;
  *
  */
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
- * 配置管理类接口.
+ * 默认管理类实现. <br/>
+ * 目前只是简单的封装成单例类，针对实际不同的运行环境，可以继承{@link AbstractConfig}实现自定义的管理类.
  *
  * @author Jingyi Yu.
  * @author Liangyi Lin.
  *
  * @version 2015-11-02.
  */
-public interface Configuration {
+public final class DefaultConfig extends AbstractConfig {
+
+    private final static Logger LOGGER = LoggerFactory.getLogger(DefaultConfig.class);
+
+    private final static Configuration singleton = new DefaultConfig();
+
+    private DefaultConfig() {
+        super();
+    }
 
     /**
-     * 返回当前是否采用智能分词.
-     * @return 如果智能分词则返回true, 否则返回false.
+     * @return 获得Configuration的单例.
      */
-    public boolean useSmart();
+    public static Configuration getSingleton() {
+        return singleton;
+    }
 
-    /**
-     * 设置是否采用智能分词。如果useSmart=true,采用智能分词策略，useSmart=false采用细粒度分词策略.
-     * @param useSmart  是否采用智能分词.
-     */
-    public void setUseSmart(boolean useSmart);
-
-    /**
-     * 获取主词典路径
-     *
-     * @return String 主词典路径
-     */
-    public String getMainDictionary();
-
-    /**
-     * 获取量词词典路径
-     *
-     * @return String 量词词典路径
-     */
-    public String getQuantifierDictionay();
-
-    /**
-     * 获取扩展字典配置路径
-     *
-     * @return List<String> 相对类加载器的路径
-     */
-    public List<String> getExtDictionarys();
-
-    /**
-     * 获取扩展停止词典配置路径
-     *
-     * @return List<String> 相对类加载器的路径
-     */
-    public List<String> getExtStopWordDictionarys();
 }
