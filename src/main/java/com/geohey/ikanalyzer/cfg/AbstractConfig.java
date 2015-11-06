@@ -118,12 +118,12 @@ public abstract class AbstractConfig implements Configuration {
 
     @Override
     public String getMainDictionary() {
-        return CORE_MAIN;
+        return props.getProperty(CORE_MAIN).trim();
     }
 
     @Override
     public String getQuantifierDictionay() {
-        return CORE_QUANTIFIER;
+        return props.getProperty(CORE_QUANTIFIER).trim();
     }
 
     @Override
