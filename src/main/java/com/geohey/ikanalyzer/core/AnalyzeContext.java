@@ -25,6 +25,7 @@ package com.geohey.ikanalyzer.core;
  */
 
 import com.geohey.ikanalyzer.cfg.Configuration;
+import com.geohey.ikanalyzer.dic.Dictionary;
 import com.geohey.ikanalyzer.util.CharacterUtils;
 
 import java.io.IOException;
@@ -36,7 +37,7 @@ import java.util.*;
  *
  * @author Liangyi Lin.
  */
-public class AnalyzerContext {
+public class AnalyzeContext {
 
     /**
      * 默认缓冲区大小
@@ -51,7 +52,7 @@ public class AnalyzerContext {
     /**
      * 字符串读取缓冲.
      */
-    private char[] segementBuff;
+    private char[] segmentBuff;
 
     /**
      * 字符类型数组.
@@ -101,9 +102,9 @@ public class AnalyzerContext {
      */
     private Configuration cfg;
 
-    public AnalyzerContext(Configuration cfg) {
+    public AnalyzeContext(Configuration cfg) {
         this.cfg = cfg;
-        this.segementBuff = new char[BUFF_SIZE];
+        this.segmentBuff = new char[BUFF_SIZE];
         this.charTypes = new int[BUFF_SIZE];
 
         this.buffLocker = new HashSet<>();
@@ -116,12 +117,12 @@ public class AnalyzerContext {
         return this.cursor;
     }
 
-    char[] getSegementBuff() {
-        return this.segementBuff;
+    char[] getSegmentBuff() {
+        return this.segmentBuff;
     }
 
     char getCurrentChar() {
-        return this.segementBuff[this.cursor];
+        return this.segmentBuff[this.cursor];
     }
 
     int getCurrentCharType() {
@@ -144,17 +145,17 @@ public class AnalyzerContext {
 
         if (buffOffset == 0) {
             // 首次读取reader
-            readCount = reader.read(segementBuff);
+            readCount = reader.read(segmentBuff);
         } else {
             int offset = this.available - this.cursor;
             //  最近一次读取的 > 最近一次处理的，将未处理的字符串拷贝到segmentBuff头部.
             if (offset > 0) {
-                System.arraycopy(segementBuff, cursor, segementBuff, 0, offset);
+                System.arraycopy(segmentBuff, cursor, segmentBuff, 0, offset);
                 readCount = offset;
             }
 
             // 继续读取reader，以onceReadIn - onceAnalyzed为起始位置，继续填充segmentBuff剩余部分
-            readCount += reader.read(segementBuff, offset, BUFF_SIZE - offset);
+            readCount += reader.read(segmentBuff, offset, BUFF_SIZE - offset);
         }
 
         // 更新最后一次从Reader中读入的可用字符串长度
@@ -170,8 +171,8 @@ public class AnalyzerContext {
      */
     public void initCursor() {
         cursor = 0;
-        segementBuff[cursor] = CharacterUtils.regularize(segementBuff[cursor]);
-        charTypes[cursor] = CharacterUtils.identifyCharType(segementBuff[cursor]);
+        segmentBuff[cursor] = CharacterUtils.regularize(segmentBuff[cursor]);
+        charTypes[cursor] = CharacterUtils.identifyCharType(segmentBuff[cursor]);
     }
 
     /**
@@ -182,8 +183,8 @@ public class AnalyzerContext {
         // 并未移动到尾部
         if (this.cursor < this.available - 1) {
             cursor++;
-            segementBuff[cursor] = CharacterUtils.regularize(segementBuff[cursor]);
-            charTypes[cursor] = CharacterUtils.identifyCharType(segementBuff[cursor]);
+            segmentBuff[cursor] = CharacterUtils.regularize(segmentBuff[cursor]);
+            charTypes[cursor] = CharacterUtils.identifyCharType(segmentBuff[cursor]);
 
             return true;
         }
@@ -256,7 +257,7 @@ public class AnalyzerContext {
      * 向分词结果集添加词元.
      * @param lexeme
      */
-    public void addLexme(Lexeme lexeme) {
+    public void addLexeme(Lexeme lexeme) {
         orgLexemes.addLexeme(lexeme);
     }
 
@@ -264,7 +265,7 @@ public class AnalyzerContext {
      * 添加分词结果路径.路径起始位置 ---> 路径 映射表.
      * @param path
      */
-    public void addLexmePath(LexemePath path) {
+    public void addLexemePath(LexemePath path) {
         if (path != null) {
             pathMap.put(path.getPathBegin(), path);
         }
@@ -283,7 +284,7 @@ public class AnalyzerContext {
      * 2. 将map中存在的分词结果推入results;
      * 3. 将map中不存在的CJDK字符以单字推入results.
      */
-    public void outputResult() {
+    public void outputToResult() {
 
         for (int index = 0; index <= cursor; index++) {
 
@@ -328,5 +329,86 @@ public class AnalyzerContext {
         } else ;
     }
 
+    /**
+     * 返回lexeme
+     *
+     * 同时处理合并
+     * @return
+     */
+    Lexeme getNextLexeme(){
+        //从结果集取出，并移除第一个Lexme
+        Lexeme result = this.results.pollFirst();
+        while(result != null){
+            //数量词合并
+            this.compound(result);
+            if(Dictionary.getSingleton().isStopWord(this.segmentBuff ,  result.getBegin() , result.getLength())){
+                //是停止词继续取列表的下一个
+                result = this.results.pollFirst();
+            }else{
+                //不是停止词, 生成lexeme的词元文本,输出
+                result.setLexemeText(String.valueOf(segmentBuff , result.getBegin() , result.getLength()));
+                break;
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 重置分词上下文状态
+     */
+    void reset(){
+        this.buffLocker.clear();
+        this.orgLexemes = new QuickSortSet();
+        this.available =0;
+        this.buffOffset = 0;
+        this.charTypes = new int[BUFF_SIZE];
+        this.cursor = 0;
+        this.results.clear();
+        this.segmentBuff = new char[BUFF_SIZE];
+        this.pathMap.clear();
+    }
+
+    /**
+     * 组合词元
+     */
+    private void compound(Lexeme result){
+        if(!this.cfg.useSmart()){
+            return ;
+        }
+        //数量词合并处理
+        if(!this.results.isEmpty()){
+
+            if(Lexeme.TYPE_ARABIC == result.getLexemeType()){
+                Lexeme nextLexeme = this.results.peekFirst();
+                boolean appendOk = false;
+                if(Lexeme.TYPE_CNUM == nextLexeme.getLexemeType()){
+                    //合并英文数词+中文数词
+                    appendOk = result.append(nextLexeme, Lexeme.TYPE_CNUM);
+                }else if(Lexeme.TYPE_COUNT == nextLexeme.getLexemeType()){
+                    //合并英文数词+中文量词
+                    appendOk = result.append(nextLexeme, Lexeme.TYPE_CQUAN);
+                }
+                if(appendOk){
+                    //弹出
+                    this.results.pollFirst();
+                }
+            }
+
+            //可能存在第二轮合并
+            if(Lexeme.TYPE_CNUM == result.getLexemeType() && !this.results.isEmpty()){
+                Lexeme nextLexeme = this.results.peekFirst();
+                boolean appendOk = false;
+                if(Lexeme.TYPE_COUNT == nextLexeme.getLexemeType()){
+                    //合并中文数词+中文量词
+                    appendOk = result.append(nextLexeme, Lexeme.TYPE_CQUAN);
+                }
+                if(appendOk){
+                    //弹出
+                    this.results.pollFirst();
+                }
+            }
+
+        }
+    }
 
 }
